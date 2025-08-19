@@ -5,6 +5,15 @@ export interface Student {
   course: string;
   marks: number;
   contactInfo: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  dateOfBirth?: string;
+  guardianName?: string;
+  guardianContact?: string;
+  admissionDate?: string;
+  bloodGroup?: string;
+  photo?: string;
   createdAt: string;
   updatedAt: string;
 }
