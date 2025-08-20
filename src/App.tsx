@@ -13,7 +13,7 @@ import { StudentList } from "./pages/StudentList";
 import { StudentProfile } from "./pages/StudentProfile";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
-import NotFound from "./pages/NotFound";
+import { NotFound } from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 

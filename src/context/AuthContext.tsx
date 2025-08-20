@@ -106,6 +106,8 @@ interface AuthContextType {
   markAttendance: (studentId: string, status: AttendanceRecord['status'], remarks?: string) => void;
   getAttendancePercentage: (studentId: string) => number;
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  markNotificationRead: (notificationId: string) => void;
+  clearNotifications: () => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
   exportData: () => void;
   importData: (data: any) => void;
@@ -344,6 +346,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'ADD_NOTIFICATION', payload: newNotification });
   };
 
+  const markNotificationRead = (notificationId: string) => {
+    dispatch({ type: 'MARK_NOTIFICATION_READ', payload: notificationId });
+  };
+
+  const clearNotifications = () => {
+    dispatch({ type: 'CLEAR_NOTIFICATIONS' });
+  };
+
   const updateSettings = (settings: Partial<AppSettings>) => {
     dispatch({ type: 'UPDATE_SETTINGS', payload: settings });
     addNotification({
@@ -417,6 +427,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markAttendance,
     getAttendancePercentage,
     addNotification,
+    markNotificationRead,
+    clearNotifications,
     updateSettings,
     exportData,
     importData,
