@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useEffect, useReducer } from 'react';
+import { User as AuthUser, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
 import { User, AttendanceRecord, Notification, AppSettings } from '@/types/auth';
-import { Student } from '@/types/student';
 import { toast } from '@/hooks/use-toast';
 
 interface AuthState {
   user: User | null;
+  supabaseUser: AuthUser | null;
+  session: Session | null;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   attendanceRecords: AttendanceRecord[];
   notifications: Notification[];
   settings: AppSettings;
@@ -13,7 +17,7 @@ interface AuthState {
 }
 
 type AuthAction =
-  | { type: 'LOGIN'; payload: User }
+  | { type: 'SET_SESSION'; payload: { user: AuthUser | null; session: Session | null; isAdmin: boolean } }
   | { type: 'LOGOUT' }
   | { type: 'ADD_ATTENDANCE'; payload: AttendanceRecord }
   | { type: 'UPDATE_ATTENDANCE'; payload: AttendanceRecord }
@@ -33,26 +37,43 @@ const initialSettings: AppSettings = {
 
 const initialState: AuthState = {
   user: null,
+  supabaseUser: null,
+  session: null,
   isAuthenticated: false,
+  isAdmin: false,
   attendanceRecords: [],
   notifications: [],
   settings: initialSettings,
-  isLoading: false,
+  isLoading: true,
 };
 
 const authReducer = (state: AuthState, action: AuthAction): AuthState => {
   switch (action.type) {
-    case 'LOGIN':
+    case 'SET_SESSION':
       return {
         ...state,
-        user: action.payload,
-        isAuthenticated: true,
+        supabaseUser: action.payload.user,
+        session: action.payload.session,
+        isAuthenticated: !!action.payload.user,
+        isAdmin: action.payload.isAdmin,
+        user: action.payload.user ? {
+          id: action.payload.user.id,
+          email: action.payload.user.email!,
+          password: '',
+          role: action.payload.isAdmin ? 'admin' : 'student',
+          name: action.payload.user.user_metadata?.name || action.payload.user.email!,
+          createdAt: action.payload.user.created_at,
+        } : null,
+        isLoading: false,
       };
     case 'LOGOUT':
       return {
         ...state,
         user: null,
+        supabaseUser: null,
+        session: null,
         isAuthenticated: false,
+        isAdmin: false,
       };
     case 'ADD_ATTENDANCE':
       return {
@@ -101,8 +122,8 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
 interface AuthContextType {
   state: AuthState;
   login: (email: string, password: string) => Promise<boolean>;
-  logout: () => void;
-  register: (userData: Omit<User, 'id' | 'createdAt'>) => Promise<boolean>;
+  logout: () => Promise<void>;
+  register: (userData: { name: string; email: string; password: string; role?: string }) => Promise<boolean>;
   markAttendance: (studentId: string, status: AttendanceRecord['status'], remarks?: string) => void;
   getAttendancePercentage: (studentId: string) => number;
   addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
@@ -123,24 +144,87 @@ export const useAuth = () => {
   return context;
 };
 
+const logLogin = async (userId: string | null, email: string, role: string | null) => {
+  try {
+    await supabase.from('login_logs').insert([{
+      user_id: userId,
+      email,
+      role: role as 'admin' | 'user',
+      user_agent: navigator.userAgent,
+    }]);
+  } catch (error) {
+    console.error('Error logging login:', error);
+  }
+};
+
+const checkAdminRole = async (userId: string): Promise<boolean> => {
+  try {
+    const { data } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .eq('role', 'admin')
+      .single();
+    return !!data;
+  } catch {
+    return false;
+  }
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(authReducer, initialState);
 
-  // Load data from localStorage
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          const isAdmin = await checkAdminRole(session.user.id);
+          dispatch({ 
+            type: 'SET_SESSION', 
+            payload: { 
+              user: session.user, 
+              session, 
+              isAdmin 
+            } 
+          });
+        } else {
+          dispatch({ 
+            type: 'SET_SESSION', 
+            payload: { user: null, session: null, isAdmin: false } 
+          });
+        }
+      }
+    );
+
+    // Check for existing session
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session?.user) {
+        const isAdmin = await checkAdminRole(session.user.id);
+        dispatch({ 
+          type: 'SET_SESSION', 
+          payload: { 
+            user: session.user, 
+            session, 
+            isAdmin 
+          } 
+        });
+      } else {
+        dispatch({ 
+          type: 'SET_SESSION', 
+          payload: { user: null, session: null, isAdmin: false } 
+        });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load attendance, notifications, settings from localStorage
+  useEffect(() => {
     const savedAttendance = localStorage.getItem('attendanceRecords');
     const savedNotifications = localStorage.getItem('notifications');
     const savedSettings = localStorage.getItem('appSettings');
-
-    if (savedUser) {
-      try {
-        const user = JSON.parse(savedUser);
-        dispatch({ type: 'LOGIN', payload: user });
-      } catch (error) {
-        console.error('Error loading user:', error);
-      }
-    }
 
     if (savedAttendance) {
       try {
@@ -174,15 +258,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Save data to localStorage
-  useEffect(() => {
-    if (state.user) {
-      localStorage.setItem('currentUser', JSON.stringify(state.user));
-    } else {
-      localStorage.removeItem('currentUser');
-    }
-  }, [state.user]);
-
   useEffect(() => {
     localStorage.setItem('attendanceRecords', JSON.stringify(state.attendanceRecords));
   }, [state.attendanceRecords]);
@@ -199,49 +274,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'SET_LOADING', payload: true });
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Check saved users
-      const savedUsers = localStorage.getItem('users');
-      const users: User[] = savedUsers ? JSON.parse(savedUsers) : [];
-      
-      const user = users.find(u => u.email === email && u.password === password);
-      
-      if (user) {
-        dispatch({ type: 'LOGIN', payload: user });
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      if (data.user) {
+        const isAdmin = await checkAdminRole(data.user.id);
+        await logLogin(data.user.id, email, isAdmin ? 'admin' : 'user');
+        
         addNotification({
           title: 'Welcome Back!',
-          message: `Hello ${user.name}, you have successfully logged in.`,
+          message: `Hello, you have successfully logged in.`,
           type: 'success',
         });
         return true;
-      } else {
-        // Default admin account
-        if (email === 'admin@studysync.com' && password === 'admin123') {
-          const defaultAdmin: User = {
-            id: 'admin',
-            email: 'admin@studysync.com',
-            password: 'admin123',
-            role: 'admin',
-            name: 'System Administrator',
-            createdAt: new Date().toISOString(),
-          };
-          dispatch({ type: 'LOGIN', payload: defaultAdmin });
-          return true;
-        }
-        
-        addNotification({
-          title: 'Login Failed',
-          message: 'Invalid email or password.',
-          type: 'error',
-        });
-        return false;
       }
-    } catch (error) {
+      return false;
+    } catch (error: any) {
       addNotification({
-        title: 'Login Error',
-        message: 'Something went wrong. Please try again.',
+        title: 'Login Failed',
+        message: error.message || 'Invalid email or password.',
         type: 'error',
       });
       return false;
@@ -250,47 +305,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (userData: Omit<User, 'id' | 'createdAt'>): Promise<boolean> => {
+  const register = async (userData: { 
+    name: string; 
+    email: string; 
+    password: string; 
+    role?: string;
+  }): Promise<boolean> => {
     try {
-      const savedUsers = localStorage.getItem('users');
-      const users: User[] = savedUsers ? JSON.parse(savedUsers) : [];
-      
-      // Check if email already exists
-      if (users.some(u => u.email === userData.email)) {
-        addNotification({
-          title: 'Registration Failed',
-          message: 'Email already exists.',
-          type: 'error',
-        });
-        return false;
-      }
-
-      const newUser: User = {
-        ...userData,
-        id: Date.now().toString(),
-        createdAt: new Date().toISOString(),
-      };
-
-      users.push(newUser);
-      localStorage.setItem('users', JSON.stringify(users));
-
-      addNotification({
-        title: 'Registration Successful',
-        message: 'Account created successfully. You can now login.',
-        type: 'success',
+      const { data, error } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            name: userData.name,
+          },
+          emailRedirectTo: `${window.location.origin}/`,
+        },
       });
-      return true;
-    } catch (error) {
+
+      if (error) throw error;
+
+      if (data.user) {
+        await logLogin(data.user.id, userData.email, 'user');
+        
+        addNotification({
+          title: 'Registration Successful',
+          message: 'Account created successfully. You can now login.',
+          type: 'success',
+        });
+        return true;
+      }
+      return false;
+    } catch (error: any) {
       addNotification({
-        title: 'Registration Error',
-        message: 'Something went wrong. Please try again.',
+        title: 'Registration Failed',
+        message: error.message || 'Something went wrong. Please try again.',
         type: 'error',
       });
       return false;
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     dispatch({ type: 'LOGOUT' });
     addNotification({
       title: 'Logged Out',
@@ -302,7 +359,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markAttendance = (studentId: string, status: AttendanceRecord['status'], remarks?: string) => {
     const today = new Date().toISOString().split('T')[0];
     
-    // Check if attendance already marked for today
     const existingRecord = state.attendanceRecords.find(
       record => record.studentId === studentId && record.date === today
     );
@@ -368,7 +424,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const data = {
       students: students ? JSON.parse(students) : [],
       attendance: state.attendanceRecords,
-      users: localStorage.getItem('users') ? JSON.parse(localStorage.getItem('users')!) : [],
       settings: state.settings,
       exportDate: new Date().toISOString(),
     };
@@ -397,9 +452,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       if (data.attendance) {
         localStorage.setItem('attendanceRecords', JSON.stringify(data.attendance));
-      }
-      if (data.users) {
-        localStorage.setItem('users', JSON.stringify(data.users));
       }
       if (data.settings) {
         dispatch({ type: 'UPDATE_SETTINGS', payload: data.settings });

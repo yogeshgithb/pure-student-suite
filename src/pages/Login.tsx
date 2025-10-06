@@ -70,7 +70,6 @@ export const Login: React.FC = () => {
       email: registerForm.email,
       password: registerForm.password,
       role: registerForm.role,
-      studentId: registerForm.studentId || undefined,
     });
 
     if (success) {

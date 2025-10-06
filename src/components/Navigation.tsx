@@ -1,26 +1,37 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   UserPlus, 
   Users, 
   FileText, 
   Settings, 
-  GraduationCap 
+  GraduationCap,
+  Shield,
+  LogOut
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/AuthContext';
 
-const navItems = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/add-student', label: 'Add Student', icon: UserPlus },
-  { path: '/students', label: 'Student List', icon: Users },
-  { path: '/reports', label: 'Reports', icon: FileText },
-  { path: '/settings', label: 'Settings', icon: Settings },
-];
-
-export const Navigation: React.FC = () => {
+const Navigation: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { state, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/');
+  };
+
+  const navItems = [
+    { path: '/', label: 'Dashboard', icon: LayoutDashboard },
+    { path: '/add-student', label: 'Add Student', icon: UserPlus },
+    { path: '/students', label: 'Student List', icon: Users },
+    { path: '/reports', label: 'Reports', icon: FileText },
+    { path: '/settings', label: 'Settings', icon: Settings },
+    ...(state.isAdmin ? [{ path: '/admin', label: 'Admin', icon: Shield }] : []),
+  ];
 
   return (
     <nav className="bg-card border-b border-border shadow-sm">
@@ -57,6 +68,17 @@ export const Navigation: React.FC = () => {
                 </Link>
               );
             })}
+            
+            {state.isAuthenticated && (
+              <Button
+                variant="ghost"
+                onClick={handleLogout}
+                className="flex items-center space-x-2"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Logout</span>
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -95,3 +117,5 @@ export const Navigation: React.FC = () => {
     </nav>
   );
 };
+
+export { Navigation };

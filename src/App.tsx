@@ -13,6 +13,7 @@ import { StudentList } from "./pages/StudentList";
 import { StudentProfile } from "./pages/StudentProfile";
 import { Reports } from "./pages/Reports";
 import { Settings } from "./pages/Settings";
+import { AdminDashboard } from "./pages/AdminDashboard";
 import { NotFound } from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,16 @@ const queryClient = new QueryClient();
 const AppRoutes = () => {
   const { state } = useAuth();
   
+  // Show loading while checking auth
+  if (state.isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      </div>
+    );
+  }
+
+  // Require authentication for all users
   if (!state.isAuthenticated) {
     return <Login />;
   }
@@ -34,6 +45,7 @@ const AppRoutes = () => {
         <Route path="/student/:id" element={<StudentProfile />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/settings" element={<Settings />} />
+        {state.isAdmin && <Route path="/admin" element={<AdminDashboard />} />}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Layout>
