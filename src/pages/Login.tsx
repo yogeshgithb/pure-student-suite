@@ -85,12 +85,6 @@ export const Login: React.FC = () => {
     }
   };
 
-  const fillDemoData = () => {
-    setLoginForm({
-      email: 'admin@studysync.com',
-      password: 'admin123',
-    });
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-light via-background to-secondary-light flex items-center justify-center p-4">
@@ -176,14 +170,6 @@ export const Login: React.FC = () => {
                     )}
                   </Button>
 
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={fillDemoData}
-                  >
-                    Use Demo Account
-                  </Button>
                 </form>
               </TabsContent>
 
@@ -306,16 +292,6 @@ export const Login: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Demo Info */}
-        <Card className="mt-4 border-primary/20 bg-primary/5">
-          <CardContent className="pt-4">
-            <h4 className="font-semibold text-sm mb-2">Demo Account:</h4>
-            <p className="text-xs text-muted-foreground">
-              Email: admin@studysync.com<br />
-              Password: admin123
-            </p>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );
